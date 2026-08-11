@@ -11,13 +11,15 @@ const (
 )
 
 // AttendanceRecord is one engineer's attendance for one calendar day.
-// Created by the "I am ON-SITE" portal button described in the SOW.
+// Created by the "I am ON-SITE" portal button described in the SOW, and
+// closed out by "I am OFF-SITE" at end of day.
 type AttendanceRecord struct {
 	ID         string           `json:"id"`
 	EngineerID string           `json:"engineer_id"`
 	Date       string           `json:"date"` // YYYY-MM-DD
 	Status     AttendanceStatus `json:"status"`
 	CheckInAt  time.Time        `json:"check_in_at"`
+	CheckOutAt *time.Time       `json:"check_out_at,omitempty"`
 	Location   string           `json:"location,omitempty"`
 	Notes      string           `json:"notes,omitempty"`
 }

@@ -66,15 +66,20 @@ CREATE TABLE IF NOT EXISTS engineers (
 );
 
 CREATE TABLE IF NOT EXISTS attendance_records (
-    id          TEXT PRIMARY KEY,
-    engineer_id TEXT NOT NULL,
-    date        TEXT NOT NULL,
-    status      TEXT NOT NULL,
-    check_in_at TIMESTAMPTZ NOT NULL,
-    location    TEXT NOT NULL DEFAULT '',
-    notes       TEXT NOT NULL DEFAULT '',
+    id           TEXT PRIMARY KEY,
+    engineer_id  TEXT NOT NULL,
+    date         TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    check_in_at  TIMESTAMPTZ NOT NULL,
+    check_out_at TIMESTAMPTZ,
+    location     TEXT NOT NULL DEFAULT '',
+    notes        TEXT NOT NULL DEFAULT '',
     UNIQUE (engineer_id, date)
 );
+
+-- Safe to run against an already-existing database: adds the column if
+-- an earlier deploy created this table before check-out existed.
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS check_out_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS leave_requests (
     id          TEXT PRIMARY KEY,

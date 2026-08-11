@@ -43,6 +43,8 @@ func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *At
 	// --- Attendance (FTE) ---
 	mux.Handle("POST /api/attendance/checkin", Chain(http.HandlerFunc(atth.CheckIn), RequireAuth,
 		RequireRole(string(roleEngineer), string(roleAdmin))))
+	mux.Handle("POST /api/attendance/checkout", Chain(http.HandlerFunc(atth.CheckOut), RequireAuth,
+		RequireRole(string(roleEngineer), string(roleAdmin))))
 	mux.Handle("POST /api/attendance/leave-request", Chain(http.HandlerFunc(atth.RequestLeave), RequireAuth,
 		RequireRole(string(roleEngineer), string(roleAdmin))))
 	mux.Handle("PATCH /api/attendance/leave-request/{id}/decision", Chain(http.HandlerFunc(atth.DecideLeave), RequireAuth,

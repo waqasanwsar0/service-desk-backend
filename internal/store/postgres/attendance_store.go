@@ -46,6 +46,32 @@ func (s *attendanceStore) CheckIn(engineerID, location string) (*models.Attendan
 	return rec, nil
 }
 
+func (s *attendanceStore) CheckOut(engineerID string) (*models.AttendanceRecord, error) {
+	now := time.Now().UTC()
+	date := now.Format("2006-01-02")
+
+	var rec models.AttendanceRecord
+	var checkOutAt sql.NullTime
+	row := s.db.QueryRow(`SELECT id, engineer_id, date, status, check_in_at, check_out_at, location, notes
+		FROM attendance_records WHERE engineer_id=$1 AND date=$2`, engineerID, date)
+	if err := row.Scan(&rec.ID, &rec.EngineerID, &rec.Date, &rec.Status, &rec.CheckInAt, &checkOutAt, &rec.Location, &rec.Notes); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.ErrNotCheckedInYet
+		}
+		return nil, err
+	}
+	if checkOutAt.Valid {
+		return nil, store.ErrAlreadyCheckedOut
+	}
+
+	_, err := s.db.Exec(`UPDATE attendance_records SET check_out_at=$1 WHERE id=$2`, now, rec.ID)
+	if err != nil {
+		return nil, err
+	}
+	rec.CheckOutAt = &now
+	return &rec, nil
+}
+
 func (s *attendanceStore) RequestLeave(engineerID, fromDate, toDate, reason string) (*models.LeaveRequest, error) {
 	id, err := db.NextID(s.db, "seq_leave", "LVE", 4)
 	if err != nil {
@@ -93,7 +119,7 @@ func (s *attendanceStore) DecideLeave(leaveID, decidedBy string, approve bool) (
 }
 
 func (s *attendanceStore) List(engineerID string) []*models.AttendanceRecord {
-	query := `SELECT id, engineer_id, date, status, check_in_at, location, notes FROM attendance_records WHERE 1=1`
+	query := `SELECT id, engineer_id, date, status, check_in_at, check_out_at, location, notes FROM attendance_records WHERE 1=1`
 	args := []interface{}{}
 	if engineerID != "" {
 		args = append(args, engineerID)
@@ -109,7 +135,11 @@ func (s *attendanceStore) List(engineerID string) []*models.AttendanceRecord {
 	out := make([]*models.AttendanceRecord, 0)
 	for rows.Next() {
 		var r models.AttendanceRecord
-		if err := rows.Scan(&r.ID, &r.EngineerID, &r.Date, &r.Status, &r.CheckInAt, &r.Location, &r.Notes); err == nil {
+		var checkOutAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.EngineerID, &r.Date, &r.Status, &r.CheckInAt, &checkOutAt, &r.Location, &r.Notes); err == nil {
+			if checkOutAt.Valid {
+				r.CheckOutAt = &checkOutAt.Time
+			}
 			out = append(out, &r)
 		}
 	}

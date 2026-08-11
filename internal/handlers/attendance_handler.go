@@ -47,6 +47,39 @@ func (h *AttendanceHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, rec)
 }
 
+// CheckOut handles POST /api/attendance/checkout
+// This is the "I am OFF-SITE" end-of-day action — closes out today's
+// check-in with a check-out time so duration can be shown.
+// Body: {"engineer_id": "..."}
+func (h *AttendanceHandler) CheckOut(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		EngineerID string `json:"engineer_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if body.EngineerID == "" {
+		writeError(w, http.StatusBadRequest, "engineer_id is required")
+		return
+	}
+
+	rec, err := h.Store.CheckOut(body.EngineerID)
+	if err != nil {
+		if err == store.ErrNotCheckedInYet {
+			writeError(w, http.StatusConflict, "no check-in found for today — check in first")
+			return
+		}
+		if err == store.ErrAlreadyCheckedOut {
+			writeError(w, http.StatusConflict, "already checked out today")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 // RequestLeave handles POST /api/attendance/leave-request
 // Body: {"engineer_id": "...", "from_date": "2026-08-10", "to_date": "2026-08-12", "reason": "..."}
 func (h *AttendanceHandler) RequestLeave(w http.ResponseWriter, r *http.Request) {

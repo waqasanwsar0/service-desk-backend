@@ -10,10 +10,13 @@ import (
 )
 
 var ErrAlreadyCheckedIn = errors.New("engineer already checked in today")
+var ErrNotCheckedInYet = errors.New("engineer has not checked in today")
+var ErrAlreadyCheckedOut = errors.New("engineer already checked out today")
 var ErrLeaveNotPending = errors.New("leave request already decided")
 
 type AttendanceStore interface {
 	CheckIn(engineerID, location string) (*models.AttendanceRecord, error)
+	CheckOut(engineerID string) (*models.AttendanceRecord, error)
 	RequestLeave(engineerID, fromDate, toDate, reason string) (*models.LeaveRequest, error)
 	DecideLeave(leaveID, decidedBy string, approve bool) (*models.LeaveRequest, error)
 	List(engineerID string) []*models.AttendanceRecord
@@ -56,6 +59,25 @@ func (s *memoryAttendanceStore) CheckIn(engineerID, location string) (*models.At
 		Location:   location,
 	}
 	s.records[key] = rec
+	return rec, nil
+}
+
+func (s *memoryAttendanceStore) CheckOut(engineerID string) (*models.AttendanceRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	date := now.Format("2006-01-02")
+	key := engineerID + "|" + date
+
+	rec, exists := s.records[key]
+	if !exists {
+		return nil, ErrNotCheckedInYet
+	}
+	if rec.CheckOutAt != nil {
+		return nil, ErrAlreadyCheckedOut
+	}
+	rec.CheckOutAt = &now
 	return rec, nil
 }
 
