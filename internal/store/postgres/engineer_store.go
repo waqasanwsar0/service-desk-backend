@@ -20,6 +20,9 @@ func NewEngineerStore(conn *sql.DB) store.EngineerStore {
 	return &engineerStore{db: conn}
 }
 
+const engineerColumns = `id, name, email, phone, skills, location, area_coverage, hourly_rate, half_day_rate, day_rate,
+	currency, travel_cost, resume_url, documents, approved_projects, available, created_at, updated_at`
+
 func (s *engineerStore) Create(e *models.Engineer) error {
 	id, err := db.NextID(s.db, "seq_engineer", "ENG", 4)
 	if err != nil {
@@ -33,21 +36,22 @@ func (s *engineerStore) Create(e *models.Engineer) error {
 
 	skills, _ := json.Marshal(e.Skills)
 	approved, _ := json.Marshal(e.ApprovedProjects)
+	area, _ := json.Marshal(e.AreaCoverage)
+	docs, _ := json.Marshal(e.Documents)
 
 	_, err = s.db.Exec(`
-		INSERT INTO engineers (id, name, email, phone, skills, location, hourly_rate, day_rate,
-			currency, approved_projects, available, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		e.ID, e.Name, e.Email, e.Phone, skills, e.Location, e.HourlyRate, e.DayRate,
-		e.Currency, approved, e.Available, e.CreatedAt, e.UpdatedAt)
+		INSERT INTO engineers (id, name, email, phone, skills, location, area_coverage, hourly_rate,
+			half_day_rate, day_rate, currency, travel_cost, resume_url, documents, approved_projects,
+			available, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		e.ID, e.Name, e.Email, e.Phone, skills, e.Location, area, e.HourlyRate,
+		e.HalfDayRate, e.DayRate, e.Currency, e.TravelCost, e.ResumeURL, docs, approved,
+		e.Available, e.CreatedAt, e.UpdatedAt)
 	return err
 }
 
 func (s *engineerStore) Get(id string) (*models.Engineer, error) {
-	row := s.db.QueryRow(`
-		SELECT id, name, email, phone, skills, location, hourly_rate, day_rate,
-			currency, approved_projects, available, created_at, updated_at
-		FROM engineers WHERE id = $1`, id)
+	row := s.db.QueryRow(`SELECT `+engineerColumns+` FROM engineers WHERE id = $1`, id)
 	e, err := scanEngineer(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, store.ErrNotFound
@@ -56,8 +60,7 @@ func (s *engineerStore) Get(id string) (*models.Engineer, error) {
 }
 
 func (s *engineerStore) Search(filter store.EngineerFilter) []*models.Engineer {
-	query := `SELECT id, name, email, phone, skills, location, hourly_rate, day_rate,
-		currency, approved_projects, available, created_at, updated_at FROM engineers WHERE 1=1`
+	query := `SELECT ` + engineerColumns + ` FROM engineers WHERE 1=1`
 	args := []interface{}{}
 	if filter.OnlyAvailable {
 		query += " AND available = true"
@@ -129,13 +132,16 @@ func scanEngineerRows(rows *sql.Rows) (*models.Engineer, error) {
 
 func scanEngineerGeneric(row rowScanner) (*models.Engineer, error) {
 	var e models.Engineer
-	var skills, approved []byte
-	err := row.Scan(&e.ID, &e.Name, &e.Email, &e.Phone, &skills, &e.Location, &e.HourlyRate, &e.DayRate,
-		&e.Currency, &approved, &e.Available, &e.CreatedAt, &e.UpdatedAt)
+	var skills, approved, area, docs []byte
+	err := row.Scan(&e.ID, &e.Name, &e.Email, &e.Phone, &skills, &e.Location, &area, &e.HourlyRate,
+		&e.HalfDayRate, &e.DayRate, &e.Currency, &e.TravelCost, &e.ResumeURL, &docs, &approved,
+		&e.Available, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	_ = json.Unmarshal(skills, &e.Skills)
 	_ = json.Unmarshal(approved, &e.ApprovedProjects)
+	_ = json.Unmarshal(area, &e.AreaCoverage)
+	_ = json.Unmarshal(docs, &e.Documents)
 	return &e, nil
 }

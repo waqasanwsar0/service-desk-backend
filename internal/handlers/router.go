@@ -5,7 +5,7 @@ import "net/http"
 // NewRouter wires up all routes on Go's stdlib ServeMux.
 // Go 1.22+ ServeMux supports "METHOD /path/{param}" patterns natively,
 // so no external router dependency is needed for this module.
-func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *AttendanceHandler, tsh *TimesheetHandler, ach *AccountingHandler, aph *ApplicantHandler, dh *DashboardHandler, asgh *AssignmentHandler, ch *ContractHandler) *http.ServeMux {
+func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *AttendanceHandler, tsh *TimesheetHandler, ach *AccountingHandler, aph *ApplicantHandler, dh *DashboardHandler, asgh *AssignmentHandler, ch *ContractHandler, oh *OutreachHandler, bh *BackupHandler, ph *ProjectHandler, dsh *DispatchHandler, rh *RequirementHandler, lh *LeadHandler, sth *SocialTaskHandler, salh *SalaryHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// --- Auth ---
@@ -25,6 +25,8 @@ func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *At
 		RequireRole(string(roleServiceDesk), string(roleAdmin), string(roleEngineer))))
 	mux.Handle("PATCH /api/tickets/{id}/assign", Chain(http.HandlerFunc(th.AssignEngineer), RequireAuth,
 		RequireRole(string(roleServiceDesk), string(roleAdmin))))
+	mux.Handle("POST /api/tickets/{id}/images", Chain(http.HandlerFunc(th.AddImage), RequireAuth,
+		RequireRole(string(roleServiceDesk), string(roleAdmin), string(roleEngineer))))
 
 	// Landing point for the future Microsoft Graph (Outlook) email importer.
 	// The importer service will authenticate with its own service account
@@ -56,6 +58,8 @@ func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *At
 		RequireRole(string(roleServiceDesk), string(roleAdmin), string(roleEngineer))))
 	mux.Handle("GET /api/timesheets", Chain(http.HandlerFunc(tsh.ListTimesheets), RequireAuth))
 	mux.Handle("GET /api/timesheets/{id}", Chain(http.HandlerFunc(tsh.GetTimesheet), RequireAuth))
+	mux.Handle("PATCH /api/timesheets/{id}/sign", Chain(http.HandlerFunc(tsh.SignTimesheet), RequireAuth,
+		RequireRole(string(roleEngineer), string(roleAdmin))))
 	mux.Handle("PATCH /api/timesheets/{id}/approve", Chain(http.HandlerFunc(tsh.ApproveTimesheet), RequireAuth,
 		RequireRole(string(roleServiceDesk), string(roleAdmin), string(roleAccounts))))
 	mux.Handle("PATCH /api/timesheets/{id}/reject", Chain(http.HandlerFunc(tsh.RejectTimesheet), RequireAuth,
@@ -99,6 +103,73 @@ func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *At
 		RequireRole(string(roleAdmin), string(roleAccounts))))
 	mux.Handle("GET /api/contracts", Chain(http.HandlerFunc(ch.ListContracts), RequireAuth))
 	mux.Handle("GET /api/contracts/{id}", Chain(http.HandlerFunc(ch.GetContract), RequireAuth))
+
+	// --- LinkedIn / manual outreach tracking (recruitment) ---
+	mux.Handle("POST /api/outreach", Chain(http.HandlerFunc(oh.CreateOutreach), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("GET /api/outreach", Chain(http.HandlerFunc(oh.ListOutreach), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("GET /api/outreach/{id}", Chain(http.HandlerFunc(oh.GetOutreach), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("PATCH /api/outreach/{id}/status", Chain(http.HandlerFunc(oh.UpdateOutreachStatus), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("POST /api/outreach/{id}/notes", Chain(http.HandlerFunc(oh.AddOutreachNote), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+
+	// --- Database backup (admin only) ---
+	mux.Handle("GET /api/admin/backup", Chain(http.HandlerFunc(bh.DownloadBackup), RequireAuth,
+		RequireRole(string(roleAdmin))))
+	mux.Handle("GET /api/admin/backup/status", Chain(http.HandlerFunc(bh.BackupStatus), RequireAuth,
+		RequireRole(string(roleAdmin))))
+
+	// --- Projects (SOW: country/city, Dispatch/FTE typing) ---
+	mux.Handle("POST /api/projects", Chain(http.HandlerFunc(ph.CreateProject), RequireAuth,
+		RequireRole(string(roleServiceDesk), string(roleAdmin))))
+	mux.Handle("GET /api/projects", Chain(http.HandlerFunc(ph.ListProjects), RequireAuth))
+	mux.Handle("GET /api/projects/{id}", Chain(http.HandlerFunc(ph.GetProject), RequireAuth))
+
+	// --- Dispatches (auto-generates the linked ticket) ---
+	mux.Handle("POST /api/dispatches", Chain(http.HandlerFunc(dsh.CreateDispatch), RequireAuth,
+		RequireRole(string(roleServiceDesk), string(roleAdmin))))
+	mux.Handle("GET /api/dispatches", Chain(http.HandlerFunc(dsh.ListDispatches), RequireAuth))
+
+	// --- Client requirements (portal upload + email intake landing point) ---
+	mux.Handle("POST /api/requirements", Chain(http.HandlerFunc(rh.CreateRequirement), RequireAuth,
+		RequireRole(string(roleServiceDesk), string(roleAdmin))))
+	mux.Handle("POST /api/requirements/import/email", Chain(http.HandlerFunc(rh.ImportFromEmail), RequireAuth,
+		RequireRole(string(roleServiceDesk), string(roleAdmin))))
+	mux.Handle("GET /api/requirements", Chain(http.HandlerFunc(rh.ListRequirements), RequireAuth))
+	mux.Handle("GET /api/requirements/{id}", Chain(http.HandlerFunc(rh.GetRequirement), RequireAuth))
+
+	// --- Sales CRM (LinkedIn / business-development leads) ---
+	mux.Handle("POST /api/leads", Chain(http.HandlerFunc(lh.CreateLead), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("GET /api/leads", Chain(http.HandlerFunc(lh.ListLeads), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("GET /api/leads/report", Chain(http.HandlerFunc(lh.LeadsReport), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("GET /api/leads/{id}", Chain(http.HandlerFunc(lh.GetLead), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("PATCH /api/leads/{id}/status", Chain(http.HandlerFunc(lh.UpdateLeadStatus), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+	mux.Handle("POST /api/leads/{id}/notes", Chain(http.HandlerFunc(lh.AddLeadNote), RequireAuth,
+		RequireRole(string(roleRecruiter), string(roleAdmin))))
+
+	// --- Social media task management ---
+	mux.Handle("POST /api/social-tasks", Chain(http.HandlerFunc(sth.CreateSocialTask), RequireAuth))
+	mux.Handle("GET /api/social-tasks", Chain(http.HandlerFunc(sth.ListSocialTasks), RequireAuth))
+	mux.Handle("GET /api/social-tasks/dashboard", Chain(http.HandlerFunc(sth.SocialTaskDashboard), RequireAuth))
+	mux.Handle("GET /api/social-tasks/{id}", Chain(http.HandlerFunc(sth.GetSocialTask), RequireAuth))
+	mux.Handle("PATCH /api/social-tasks/{id}/status", Chain(http.HandlerFunc(sth.UpdateSocialTaskStatus), RequireAuth))
+	mux.Handle("POST /api/social-tasks/{id}/notes", Chain(http.HandlerFunc(sth.AddSocialTaskNote), RequireAuth))
+
+	// --- Employee salary management ---
+	mux.Handle("POST /api/salaries", Chain(http.HandlerFunc(salh.CreateSalary), RequireAuth,
+		RequireRole(string(roleAdmin), string(roleAccounts))))
+	mux.Handle("GET /api/salaries", Chain(http.HandlerFunc(salh.ListSalaries), RequireAuth,
+		RequireRole(string(roleAdmin), string(roleAccounts))))
+	mux.Handle("PATCH /api/salaries/{id}/paid", Chain(http.HandlerFunc(salh.MarkSalaryPaid), RequireAuth,
+		RequireRole(string(roleAdmin), string(roleAccounts))))
 
 	// --- Recruitment ATS ---
 	mux.Handle("POST /api/applicants", Chain(http.HandlerFunc(aph.CreateApplicant), RequireAuth,

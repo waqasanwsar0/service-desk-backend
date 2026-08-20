@@ -18,6 +18,9 @@ func NewTimesheetStore(conn *sql.DB) store.TimesheetStore {
 	return &timesheetStore{db: conn}
 }
 
+const timesheetColumns = `id, ticket_id, engineer_id, check_in_at, check_out_at, job_type,
+	file_url, status, billed_amount, currency, invoice_id, signed_by_engineer, signed_at, created_at, updated_at`
+
 func (s *timesheetStore) Create(t *models.Timesheet) error {
 	id, err := db.NextID(s.db, "seq_timesheet", "TSH", 4)
 	if err != nil {
@@ -30,16 +33,15 @@ func (s *timesheetStore) Create(t *models.Timesheet) error {
 	t.UpdatedAt = now
 
 	_, err = s.db.Exec(`INSERT INTO timesheets (id, ticket_id, engineer_id, check_in_at, check_out_at, job_type,
-		file_url, status, billed_amount, currency, invoice_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		file_url, status, billed_amount, currency, invoice_id, signed_by_engineer, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		t.ID, t.TicketID, t.EngineerID, t.CheckInAt, t.CheckOutAt, t.JobType,
-		t.FileURL, t.Status, t.BilledAmount, t.Currency, t.InvoiceID, t.CreatedAt, t.UpdatedAt)
+		t.FileURL, t.Status, t.BilledAmount, t.Currency, t.InvoiceID, false, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
 func (s *timesheetStore) Get(id string) (*models.Timesheet, error) {
-	row := s.db.QueryRow(`SELECT id, ticket_id, engineer_id, check_in_at, check_out_at, job_type,
-		file_url, status, billed_amount, currency, invoice_id, created_at, updated_at FROM timesheets WHERE id=$1`, id)
+	row := s.db.QueryRow(`SELECT `+timesheetColumns+` FROM timesheets WHERE id=$1`, id)
 	t, err := scanTimesheet(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, store.ErrNotFound
@@ -48,8 +50,7 @@ func (s *timesheetStore) Get(id string) (*models.Timesheet, error) {
 }
 
 func (s *timesheetStore) List(ticketID, engineerID string) []*models.Timesheet {
-	query := `SELECT id, ticket_id, engineer_id, check_in_at, check_out_at, job_type,
-		file_url, status, billed_amount, currency, invoice_id, created_at, updated_at FROM timesheets WHERE 1=1`
+	query := `SELECT ` + timesheetColumns + ` FROM timesheets WHERE 1=1`
 	args := []interface{}{}
 	if ticketID != "" {
 		args = append(args, ticketID)
@@ -150,6 +151,22 @@ func (s *timesheetStore) MarkInvoiced(id, invoiceID string) (*models.Timesheet, 
 	return t, nil
 }
 
+func (s *timesheetStore) Sign(id string) (*models.Timesheet, error) {
+	t, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	_, err = s.db.Exec(`UPDATE timesheets SET signed_by_engineer=true, signed_at=$1, updated_at=$1 WHERE id=$2`, now, id)
+	if err != nil {
+		return nil, err
+	}
+	t.SignedByEngineer = true
+	t.SignedAt = &now
+	t.UpdatedAt = now
+	return t, nil
+}
+
 func round2(f float64) float64 {
 	return float64(int(f*100+0.5)) / 100
 }
@@ -162,10 +179,14 @@ func scanTimesheetRows(rows *sql.Rows) (*models.Timesheet, error) {
 }
 func scanTimesheetGeneric(row rowScanner) (*models.Timesheet, error) {
 	var t models.Timesheet
+	var signedAt sql.NullTime
 	err := row.Scan(&t.ID, &t.TicketID, &t.EngineerID, &t.CheckInAt, &t.CheckOutAt, &t.JobType,
-		&t.FileURL, &t.Status, &t.BilledAmount, &t.Currency, &t.InvoiceID, &t.CreatedAt, &t.UpdatedAt)
+		&t.FileURL, &t.Status, &t.BilledAmount, &t.Currency, &t.InvoiceID, &t.SignedByEngineer, &signedAt, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if signedAt.Valid {
+		t.SignedAt = &signedAt.Time
 	}
 	return &t, nil
 }

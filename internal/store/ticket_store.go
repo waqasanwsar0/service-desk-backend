@@ -20,6 +20,7 @@ type TicketStore interface {
 	List(filter ListFilter) []*models.Ticket
 	UpdateStatus(id string, newStatus models.TicketStatus) (*models.Ticket, error)
 	Assign(id, engineerID, engineerName string) (*models.Ticket, error)
+	AddImage(id, imageURL string) (*models.Ticket, error)
 }
 
 type ListFilter struct {
@@ -142,5 +143,18 @@ func (s *memoryStore) Assign(id, engineerID, engineerName string) (*models.Ticke
 	if t.Status == models.StatusNew {
 		t.Status = models.StatusAssigned
 	}
+	return t, nil
+}
+
+func (s *memoryStore) AddImage(id, imageURL string) (*models.Ticket, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	t, ok := s.tickets[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	t.ImageURLs = append(t.ImageURLs, imageURL)
+	t.UpdatedAt = time.Now().UTC()
 	return t, nil
 }

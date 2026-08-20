@@ -26,6 +26,9 @@ type TimesheetStore interface {
 	// timesheet. Returns ErrTimesheetAlreadyInvoiced or ErrTimesheetNotApproved
 	// if the timesheet isn't eligible.
 	MarkInvoiced(id, invoiceID string) (*models.Timesheet, error)
+	// Sign marks the timesheet as confirmed by the engineer (FTE
+	// sign-off) — required before it can be approved for billing.
+	Sign(id string) (*models.Timesheet, error)
 }
 
 type memoryTimesheetStore struct {
@@ -151,6 +154,21 @@ func (s *memoryTimesheetStore) MarkInvoiced(id, invoiceID string) (*models.Times
 	}
 	t.InvoiceID = invoiceID
 	t.UpdatedAt = time.Now().UTC()
+	return t, nil
+}
+
+func (s *memoryTimesheetStore) Sign(id string) (*models.Timesheet, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	t, ok := s.timesheets[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	now := time.Now().UTC()
+	t.SignedByEngineer = true
+	t.SignedAt = &now
+	t.UpdatedAt = now
 	return t, nil
 }
 

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -30,22 +31,24 @@ func (s *ticketStore) Create(t *models.Ticket) error {
 	t.CreatedAt = now
 	t.UpdatedAt = now
 
+	images, _ := json.Marshal(t.ImageURLs)
+
 	_, err = s.db.Exec(`
-		INSERT INTO tickets (id, title, description, client_name, project_name, project_type,
-			domain, site_address, priority, sla_due_at, source, status,
-			assigned_engineer_id, assigned_engineer_name, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-		t.ID, t.Title, t.Description, t.ClientName, t.ProjectName, t.ProjectType,
-		t.Domain, t.SiteAddress, t.Priority, t.SLADueAt, t.Source, t.Status,
-		t.AssignedEngineerID, t.AssignedEngineerName, t.CreatedAt, t.UpdatedAt)
+		INSERT INTO tickets (id, title, description, client_name, project_id, project_name, project_type,
+			country, domain, site_address, priority, sla_due_at, source, status,
+			assigned_engineer_id, assigned_engineer_name, image_urls, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+		t.ID, t.Title, t.Description, t.ClientName, t.ProjectID, t.ProjectName, t.ProjectType,
+		t.Country, t.Domain, t.SiteAddress, t.Priority, t.SLADueAt, t.Source, t.Status,
+		t.AssignedEngineerID, t.AssignedEngineerName, images, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
 func (s *ticketStore) Get(id string) (*models.Ticket, error) {
 	row := s.db.QueryRow(`
-		SELECT id, title, description, client_name, project_name, project_type,
-			domain, site_address, priority, sla_due_at, source, status,
-			assigned_engineer_id, assigned_engineer_name, created_at, updated_at
+		SELECT id, title, description, client_name, project_id, project_name, project_type,
+			country, domain, site_address, priority, sla_due_at, source, status,
+			assigned_engineer_id, assigned_engineer_name, image_urls, created_at, updated_at
 		FROM tickets WHERE id = $1`, id)
 	t, err := scanTicket(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -55,9 +58,9 @@ func (s *ticketStore) Get(id string) (*models.Ticket, error) {
 }
 
 func (s *ticketStore) List(filter store.ListFilter) []*models.Ticket {
-	query := `SELECT id, title, description, client_name, project_name, project_type,
-		domain, site_address, priority, sla_due_at, source, status,
-		assigned_engineer_id, assigned_engineer_name, created_at, updated_at FROM tickets WHERE 1=1`
+	query := `SELECT id, title, description, client_name, project_id, project_name, project_type,
+		country, domain, site_address, priority, sla_due_at, source, status,
+		assigned_engineer_id, assigned_engineer_name, image_urls, created_at, updated_at FROM tickets WHERE 1=1`
 	args := []interface{}{}
 	if filter.Status != "" {
 		args = append(args, filter.Status)
@@ -134,6 +137,22 @@ func (s *ticketStore) Assign(id, engineerID, engineerName string) (*models.Ticke
 	return t, nil
 }
 
+func (s *ticketStore) AddImage(id, imageURL string) (*models.Ticket, error) {
+	t, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	t.ImageURLs = append(t.ImageURLs, imageURL)
+	images, _ := json.Marshal(t.ImageURLs)
+	now := time.Now().UTC()
+	_, err = s.db.Exec(`UPDATE tickets SET image_urls=$1, updated_at=$2 WHERE id=$3`, images, now, id)
+	if err != nil {
+		return nil, err
+	}
+	t.UpdatedAt = now
+	return t, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...interface{}) error
 }
@@ -149,15 +168,17 @@ func scanTicketRows(rows *sql.Rows) (*models.Ticket, error) {
 func scanTicketGeneric(row rowScanner) (*models.Ticket, error) {
 	var t models.Ticket
 	var slaDueAt sql.NullTime
-	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.ClientName, &t.ProjectName, &t.ProjectType,
-		&t.Domain, &t.SiteAddress, &t.Priority, &slaDueAt, &t.Source, &t.Status,
-		&t.AssignedEngineerID, &t.AssignedEngineerName, &t.CreatedAt, &t.UpdatedAt)
+	var images []byte
+	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.ClientName, &t.ProjectID, &t.ProjectName, &t.ProjectType,
+		&t.Country, &t.Domain, &t.SiteAddress, &t.Priority, &slaDueAt, &t.Source, &t.Status,
+		&t.AssignedEngineerID, &t.AssignedEngineerName, &images, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if slaDueAt.Valid {
 		t.SLADueAt = &slaDueAt.Time
 	}
+	_ = json.Unmarshal(images, &t.ImageURLs)
 	return &t, nil
 }
 

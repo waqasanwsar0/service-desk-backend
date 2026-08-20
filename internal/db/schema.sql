@@ -20,6 +20,13 @@ CREATE SEQUENCE IF NOT EXISTS seq_adjustment;
 CREATE SEQUENCE IF NOT EXISTS seq_applicant;
 CREATE SEQUENCE IF NOT EXISTS seq_assignment;
 CREATE SEQUENCE IF NOT EXISTS seq_contract;
+CREATE SEQUENCE IF NOT EXISTS seq_outreach;
+CREATE SEQUENCE IF NOT EXISTS seq_project;
+CREATE SEQUENCE IF NOT EXISTS seq_dispatch;
+CREATE SEQUENCE IF NOT EXISTS seq_requirement;
+CREATE SEQUENCE IF NOT EXISTS seq_lead;
+CREATE SEQUENCE IF NOT EXISTS seq_social_task;
+CREATE SEQUENCE IF NOT EXISTS seq_salary;
 
 CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -35,8 +42,10 @@ CREATE TABLE IF NOT EXISTS tickets (
     title                   TEXT NOT NULL,
     description             TEXT NOT NULL DEFAULT '',
     client_name             TEXT NOT NULL,
+    project_id              TEXT NOT NULL DEFAULT '',
     project_name            TEXT NOT NULL DEFAULT '',
     project_type            TEXT NOT NULL DEFAULT '',
+    country                 TEXT NOT NULL DEFAULT '',
     domain                  TEXT NOT NULL DEFAULT '',
     site_address            TEXT NOT NULL DEFAULT '',
     priority                TEXT NOT NULL,
@@ -45,9 +54,15 @@ CREATE TABLE IF NOT EXISTS tickets (
     status                  TEXT NOT NULL,
     assigned_engineer_id    TEXT NOT NULL DEFAULT '',
     assigned_engineer_name  TEXT NOT NULL DEFAULT '',
+    image_urls              JSONB NOT NULL DEFAULT '[]',
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Safe on an already-deployed database: adds columns introduced after
+-- the table was first created, without touching existing rows/data.
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS image_urls JSONB NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS engineers (
     id                TEXT PRIMARY KEY,
@@ -56,14 +71,24 @@ CREATE TABLE IF NOT EXISTS engineers (
     phone             TEXT NOT NULL DEFAULT '',
     skills            JSONB NOT NULL DEFAULT '[]',
     location          TEXT NOT NULL DEFAULT '',
+    area_coverage     JSONB NOT NULL DEFAULT '[]',
     hourly_rate       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    half_day_rate     DOUBLE PRECISION NOT NULL DEFAULT 0,
     day_rate          DOUBLE PRECISION NOT NULL DEFAULT 0,
     currency          TEXT NOT NULL DEFAULT '',
+    travel_cost       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    resume_url        TEXT NOT NULL DEFAULT '',
+    documents         JSONB NOT NULL DEFAULT '[]',
     approved_projects JSONB NOT NULL DEFAULT '[]',
     available         BOOLEAN NOT NULL DEFAULT true,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE engineers ADD COLUMN IF NOT EXISTS area_coverage JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE engineers ADD COLUMN IF NOT EXISTS half_day_rate DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE engineers ADD COLUMN IF NOT EXISTS travel_cost DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE engineers ADD COLUMN IF NOT EXISTS resume_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE engineers ADD COLUMN IF NOT EXISTS documents JSONB NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS attendance_records (
     id           TEXT PRIMARY KEY,
@@ -94,20 +119,24 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 );
 
 CREATE TABLE IF NOT EXISTS timesheets (
-    id            TEXT PRIMARY KEY,
-    ticket_id     TEXT NOT NULL,
-    engineer_id   TEXT NOT NULL,
-    check_in_at   TIMESTAMPTZ NOT NULL,
-    check_out_at  TIMESTAMPTZ NOT NULL,
-    job_type      TEXT NOT NULL,
-    file_url      TEXT NOT NULL DEFAULT '',
-    status        TEXT NOT NULL,
-    billed_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
-    currency      TEXT NOT NULL DEFAULT '',
-    invoice_id    TEXT NOT NULL DEFAULT '',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                 TEXT PRIMARY KEY,
+    ticket_id          TEXT NOT NULL,
+    engineer_id        TEXT NOT NULL,
+    check_in_at        TIMESTAMPTZ NOT NULL,
+    check_out_at       TIMESTAMPTZ NOT NULL,
+    job_type           TEXT NOT NULL,
+    file_url           TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL,
+    billed_amount      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    currency           TEXT NOT NULL DEFAULT '',
+    invoice_id         TEXT NOT NULL DEFAULT '',
+    signed_by_engineer BOOLEAN NOT NULL DEFAULT false,
+    signed_at          TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE timesheets ADD COLUMN IF NOT EXISTS signed_by_engineer BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE timesheets ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS entities (
     id               TEXT PRIMARY KEY,
@@ -194,6 +223,93 @@ CREATE TABLE IF NOT EXISTS contracts (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS outreach_contacts (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    linkedin_url    TEXT NOT NULL DEFAULT '',
+    target_role     TEXT NOT NULL DEFAULT '',
+    recruiter_id    TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL,
+    message_sent_at TIMESTAMPTZ NOT NULL,
+    notes           JSONB NOT NULL DEFAULT '[]',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    client_name TEXT NOT NULL,
+    country     TEXT NOT NULL DEFAULT '',
+    city        TEXT NOT NULL DEFAULT '',
+    type        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS dispatches (
+    id           TEXT PRIMARY KEY,
+    ticket_id    TEXT NOT NULL,
+    project_id   TEXT NOT NULL DEFAULT '',
+    client_name  TEXT NOT NULL,
+    site_address TEXT NOT NULL DEFAULT '',
+    engineer_id  TEXT NOT NULL DEFAULT '',
+    scheduled_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS requirements (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL DEFAULT '',
+    client_name  TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    file_url     TEXT NOT NULL DEFAULT '',
+    source       TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS leads (
+    id            TEXT PRIMARY KEY,
+    company_name  TEXT NOT NULL,
+    contact_name  TEXT NOT NULL DEFAULT '',
+    contact_email TEXT NOT NULL DEFAULT '',
+    contact_phone TEXT NOT NULL DEFAULT '',
+    linkedin_url  TEXT NOT NULL DEFAULT '',
+    source        TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL,
+    owner_id      TEXT NOT NULL DEFAULT '',
+    notes         JSONB NOT NULL DEFAULT '[]',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS social_media_tasks (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    platform    TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    owner_id    TEXT NOT NULL DEFAULT '',
+    due_date    TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL,
+    asset_url   TEXT NOT NULL DEFAULT '',
+    notes       JSONB NOT NULL DEFAULT '[]',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS salaries (
+    id             TEXT PRIMARY KEY,
+    employee_name  TEXT NOT NULL,
+    user_id        TEXT NOT NULL DEFAULT '',
+    pay_period     TEXT NOT NULL, -- e.g. "2026-08"
+    amount         DOUBLE PRECISION NOT NULL,
+    currency       TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL,
+    paid_at        TIMESTAMPTZ,
+    notes          TEXT NOT NULL DEFAULT '',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_client ON tickets (client_name);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status);
 CREATE INDEX IF NOT EXISTS idx_timesheets_ticket ON timesheets (ticket_id);
@@ -201,3 +317,11 @@ CREATE INDEX IF NOT EXISTS idx_timesheets_engineer ON timesheets (engineer_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_bills_ticket ON vendor_bills (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_applicants_job_title ON applicants (job_title);
 CREATE INDEX IF NOT EXISTS idx_assignments_engineer ON assignments (engineer_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_recruiter ON outreach_contacts (recruiter_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach_contacts (status);
+CREATE INDEX IF NOT EXISTS idx_requirements_project ON requirements (project_id);
+CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads (owner_id);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (status);
+CREATE INDEX IF NOT EXISTS idx_social_tasks_status ON social_media_tasks (status);
+CREATE INDEX IF NOT EXISTS idx_social_tasks_platform ON social_media_tasks (platform);
+CREATE INDEX IF NOT EXISTS idx_salaries_period ON salaries (pay_period);

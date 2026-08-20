@@ -3,16 +3,19 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"servicedesk/internal/store"
 )
 
 type AttendanceHandler struct {
-	Store store.AttendanceStore
+	Store     store.AttendanceStore
+	Engineers store.EngineerStore
+	Notifier  *Notifier
 }
 
-func NewAttendanceHandler(s store.AttendanceStore) *AttendanceHandler {
-	return &AttendanceHandler{Store: s}
+func NewAttendanceHandler(s store.AttendanceStore, engineers store.EngineerStore, notifier *Notifier) *AttendanceHandler {
+	return &AttendanceHandler{Store: s, Engineers: engineers, Notifier: notifier}
 }
 
 // CheckIn handles POST /api/attendance/checkin
@@ -44,6 +47,7 @@ func (h *AttendanceHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.notifySupervisor(body.EngineerID, "checked ON-SITE")
 	writeJSON(w, http.StatusCreated, rec)
 }
 
@@ -77,7 +81,28 @@ func (h *AttendanceHandler) CheckOut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.notifySupervisor(body.EngineerID, "checked OFF-SITE")
 	writeJSON(w, http.StatusOK, rec)
+}
+
+// notifySupervisor sends a best-effort onsite/offsite alert to the
+// address in NOTIFY_SUPERVISOR_EMAIL, if configured — the SOW's
+// "email alert on check-in/check-out" requirement. Silently does
+// nothing if that env var isn't set, or if the engineer can't be found.
+func (h *AttendanceHandler) notifySupervisor(engineerID, action string) {
+	if h.Notifier == nil || h.Engineers == nil {
+		return
+	}
+	supervisorEmail := supervisorEmailFromEnv()
+	if supervisorEmail == "" {
+		return
+	}
+	eng, err := h.Engineers.Get(engineerID)
+	if err != nil {
+		return
+	}
+	h.Notifier.Send(supervisorEmail, eng.Name+" "+action,
+		eng.Name+" just "+action+" at "+time.Now().UTC().Format("15:04 MST")+".")
 }
 
 // RequestLeave handles POST /api/attendance/leave-request

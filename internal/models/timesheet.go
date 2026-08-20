@@ -53,6 +53,12 @@ type Timesheet struct {
 	// billing the same work twice.
 	InvoiceID string `json:"invoice_id,omitempty"`
 
+	// SignedByEngineer marks that the engineer has confirmed the hours
+	// are correct — the SOW's "FTE sign-off" requirement for dispatch
+	// timesheets, done before Service Desk approves and bills it.
+	SignedByEngineer bool       `json:"signed_by_engineer"`
+	SignedAt         *time.Time `json:"signed_at,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -91,14 +91,17 @@ type Ticket struct {
 	Title       string       `json:"title"`
 	Description string       `json:"description"`
 	ClientName  string       `json:"client_name"`
+	ProjectID   string       `json:"project_id,omitempty"` // links to the Projects module
 	ProjectName string       `json:"project_name"`
 	ProjectType ProjectType  `json:"project_type"`
+	Country     string       `json:"country,omitempty"`
 	Domain      string       `json:"domain"` // e.g. "Windows Support", "Networking"
 	SiteAddress string       `json:"site_address"`
 	Priority    Priority     `json:"priority"`
 	SLADueAt    *time.Time   `json:"sla_due_at,omitempty"`
 	Source      Source       `json:"source"`
 	Status      TicketStatus `json:"status"`
+	ImageURLs   []string     `json:"image_urls,omitempty"`
 
 	AssignedEngineerID   string `json:"assigned_engineer_id,omitempty"`
 	AssignedEngineerName string `json:"assigned_engineer_name,omitempty"`
@@ -114,11 +117,14 @@ type NewTicketInput struct {
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
 	ClientName  string      `json:"client_name"`
+	ProjectID   string      `json:"project_id,omitempty"`
 	ProjectName string      `json:"project_name"`
 	ProjectType ProjectType `json:"project_type"`
+	Country     string      `json:"country,omitempty"`
 	Domain      string      `json:"domain"`
 	SiteAddress string      `json:"site_address"`
 	Priority    Priority    `json:"priority"`
 	SLAHours    *int        `json:"sla_hours,omitempty"` // e.g. 4 -> due 4h from now
 	Source      Source      `json:"source"`
+	ImageURLs   []string    `json:"image_urls,omitempty"`
 }

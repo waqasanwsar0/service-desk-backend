@@ -128,6 +128,23 @@ func (h *TimesheetHandler) ApproveTimesheet(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, approved)
 }
 
+// SignTimesheet handles PATCH /api/timesheets/{id}/sign
+// The SOW's FTE sign-off requirement: the engineer confirms their hours
+// are correct before Service Desk reviews and approves the timesheet.
+func (h *TimesheetHandler) SignTimesheet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ts, err := h.Timesheets.Sign(id)
+	if err != nil {
+		if err == store.ErrNotFound {
+			writeError(w, http.StatusNotFound, "timesheet not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ts)
+}
+
 // RejectTimesheet handles PATCH /api/timesheets/{id}/reject
 func (h *TimesheetHandler) RejectTimesheet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")

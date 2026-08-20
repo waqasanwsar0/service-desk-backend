@@ -10,11 +10,13 @@ import (
 )
 
 type TicketHandler struct {
-	Store store.TicketStore
+	Store     store.TicketStore
+	Engineers store.EngineerStore
+	Notifier  *Notifier
 }
 
-func NewTicketHandler(s store.TicketStore) *TicketHandler {
-	return &TicketHandler{Store: s}
+func NewTicketHandler(s store.TicketStore, engineers store.EngineerStore, notifier *Notifier) *TicketHandler {
+	return &TicketHandler{Store: s, Engineers: engineers, Notifier: notifier}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
@@ -54,12 +56,15 @@ func (h *TicketHandler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 		Title:       in.Title,
 		Description: in.Description,
 		ClientName:  in.ClientName,
+		ProjectID:   in.ProjectID,
 		ProjectName: in.ProjectName,
 		ProjectType: in.ProjectType,
+		Country:     in.Country,
 		Domain:      in.Domain,
 		SiteAddress: in.SiteAddress,
 		Priority:    in.Priority,
 		Source:      in.Source,
+		ImageURLs:   in.ImageURLs,
 	}
 	if in.SLAHours != nil {
 		due := time.Now().UTC().Add(time.Duration(*in.SLAHours) * time.Hour)
@@ -187,6 +192,44 @@ func (h *TicketHandler) AssignEngineer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := h.Store.Assign(id, body.EngineerID, body.EngineerName)
+	if err != nil {
+		if err == store.ErrNotFound {
+			writeError(w, http.StatusNotFound, "ticket not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if h.Notifier != nil && h.Engineers != nil {
+		if eng, err := h.Engineers.Get(body.EngineerID); err == nil {
+			h.Notifier.Send(eng.Email, "Ticket assigned: "+t.Title,
+				"You've been assigned to ticket "+t.ID+" ("+t.Title+") for "+t.ClientName+".\n\nSite: "+t.SiteAddress)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, t)
+}
+
+// AddImage handles PATCH /api/tickets/{id}/images
+// Body: {"image_url": "https://…"} — attaches a photo (e.g. of the
+// issue, or proof of work) to the ticket.
+func (h *TicketHandler) AddImage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	var body struct {
+		ImageURL string `json:"image_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if body.ImageURL == "" {
+		writeError(w, http.StatusBadRequest, "image_url is required")
+		return
+	}
+
+	t, err := h.Store.AddImage(id, body.ImageURL)
 	if err != nil {
 		if err == store.ErrNotFound {
 			writeError(w, http.StatusNotFound, "ticket not found")

@@ -34,9 +34,14 @@ func (h *EngineerHandler) CreateEngineer(w http.ResponseWriter, r *http.Request)
 		Phone:            in.Phone,
 		Skills:           in.Skills,
 		Location:         in.Location,
+		AreaCoverage:     in.AreaCoverage,
 		HourlyRate:       in.HourlyRate,
+		HalfDayRate:      in.HalfDayRate,
 		DayRate:          in.DayRate,
 		Currency:         in.Currency,
+		TravelCost:       in.TravelCost,
+		ResumeURL:        in.ResumeURL,
+		Documents:        in.Documents,
 		ApprovedProjects: in.ApprovedProjects,
 	}
 	if err := h.Store.Create(e); err != nil {
