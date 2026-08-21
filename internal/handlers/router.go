@@ -5,7 +5,7 @@ import "net/http"
 // NewRouter wires up all routes on Go's stdlib ServeMux.
 // Go 1.22+ ServeMux supports "METHOD /path/{param}" patterns natively,
 // so no external router dependency is needed for this module.
-func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *AttendanceHandler, tsh *TimesheetHandler, ach *AccountingHandler, aph *ApplicantHandler, dh *DashboardHandler, asgh *AssignmentHandler, ch *ContractHandler, oh *OutreachHandler, bh *BackupHandler, ph *ProjectHandler, dsh *DispatchHandler, rh *RequirementHandler, lh *LeadHandler, sth *SocialTaskHandler, salh *SalaryHandler) *http.ServeMux {
+func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *AttendanceHandler, tsh *TimesheetHandler, ach *AccountingHandler, aph *ApplicantHandler, dh *DashboardHandler, asgh *AssignmentHandler, ch *ContractHandler, oh *OutreachHandler, bh *BackupHandler, ph *ProjectHandler, dsh *DispatchHandler, rh *RequirementHandler, lh *LeadHandler, sth *SocialTaskHandler, salh *SalaryHandler, fh *FileHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// --- Auth ---
@@ -170,6 +170,13 @@ func NewRouter(th *TicketHandler, ah *AuthHandler, eh *EngineerHandler, atth *At
 		RequireRole(string(roleAdmin), string(roleAccounts))))
 	mux.Handle("PATCH /api/salaries/{id}/paid", Chain(http.HandlerFunc(salh.MarkSalaryPaid), RequireAuth,
 		RequireRole(string(roleAdmin), string(roleAccounts))))
+
+	// --- File attachments (images, videos, PDFs) ---
+	// Upload requires auth; download is left open (unauthenticated) since
+	// <img>/<video> tags in the browser can't send an Authorization
+	// header — the random file ID acts as a private share-link.
+	mux.Handle("POST /api/files/upload", Chain(http.HandlerFunc(fh.UploadFile), RequireAuth))
+	mux.HandleFunc("GET /api/files/{id}", fh.DownloadFile)
 
 	// --- Recruitment ATS ---
 	mux.Handle("POST /api/applicants", Chain(http.HandlerFunc(aph.CreateApplicant), RequireAuth,

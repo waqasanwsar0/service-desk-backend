@@ -225,3 +225,45 @@ This backend now supports two storage modes:
 
 `vercel.json` in the frontend folder already handles client-side routing
 (so refreshing `/tickets/TCK-0001` doesn't 404).
+
+## Outlook email ticket intake (optional)
+
+If you want unread emails in a shared mailbox to become tickets
+automatically, set 4 environment variables on the Railway service:
+
+- `AZURE_TENANT_ID`
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `AZURE_MAILBOX` — the mailbox address to watch, e.g. `support@yourcompany.com`
+
+These come from an Azure App Registration on the mailbox's Microsoft 365
+tenant:
+
+1. [portal.azure.com](https://portal.azure.com) → **App registrations** → **New registration**.
+2. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Application permissions** → add `Mail.Read` → **Grant admin consent**.
+3. **Certificates & secrets** → **New client secret** — copy its value
+   immediately (it's shown once).
+4. From the app's **Overview** page: copy the **Tenant ID** and
+   **Client ID** (Application ID).
+
+Without these 4 variables set, the server runs exactly as before —
+nothing else is affected. With them set, it polls the mailbox's inbox
+every 2 minutes, turns each unread email into a ticket (subject →
+title, sender → client name, preview text → description), and marks
+it read so it isn't imported twice.
+
+## File uploads (images, videos, PDFs)
+
+`POST /api/files/upload` (multipart/form-data, field `file`) accepts
+images, videos, and PDFs up to 20MB, stores them in PostgreSQL (no
+external storage service needed), and returns a URL like
+`/api/files/FILE-000001`. `GET /api/files/{id}` serves the file back —
+this endpoint is intentionally left open (no auth) since browser
+`<img>`/`<video>` tags can't send an Authorization header; the random
+ID acts as a private link.
+
+Wired into the frontend for: ticket photos, engineer resumes, client
+requirement files, social media task assets, and timesheet proof —
+each of those forms has an upload button alongside the option to paste
+an external URL instead.

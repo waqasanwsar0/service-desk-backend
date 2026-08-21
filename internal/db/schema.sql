@@ -27,6 +27,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_requirement;
 CREATE SEQUENCE IF NOT EXISTS seq_lead;
 CREATE SEQUENCE IF NOT EXISTS seq_social_task;
 CREATE SEQUENCE IF NOT EXISTS seq_salary;
+CREATE SEQUENCE IF NOT EXISTS seq_file;
 
 CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -308,6 +309,16 @@ CREATE TABLE IF NOT EXISTS salaries (
     paid_at        TIMESTAMPTZ,
     notes          TEXT NOT NULL DEFAULT '',
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    id           TEXT PRIMARY KEY,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size         BIGINT NOT NULL,
+    uploaded_by  TEXT NOT NULL DEFAULT '',
+    data         BYTEA NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_tickets_client ON tickets (client_name);

@@ -9,6 +9,7 @@ import (
 
 	pgdb "servicedesk/internal/db"
 	"servicedesk/internal/handlers"
+	"servicedesk/internal/outlook"
 	"servicedesk/internal/store"
 	"servicedesk/internal/store/postgres"
 )
@@ -36,6 +37,7 @@ func main() {
 		leadStore        store.LeadStore
 		socialTaskStore  store.SocialTaskStore
 		salaryStore      store.SalaryStore
+		fileStore        store.FileStore
 		rawDB            *sql.DB // kept for the backup/export endpoint; nil in in-memory mode
 	)
 
@@ -61,6 +63,7 @@ func main() {
 		leadStore = postgres.NewLeadStore(conn)
 		socialTaskStore = postgres.NewSocialTaskStore(conn)
 		salaryStore = postgres.NewSalaryStore(conn)
+		fileStore = postgres.NewFileStore(conn)
 
 		log.Println("Using PostgreSQL storage (DATABASE_URL set) — data persists across restarts.")
 	} else {
@@ -80,11 +83,22 @@ func main() {
 		leadStore = store.NewMemoryLeadStore()
 		socialTaskStore = store.NewMemorySocialTaskStore()
 		salaryStore = store.NewMemorySalaryStore()
+		fileStore = store.NewMemoryFileStore()
 
 		log.Println("Using in-memory storage (no DATABASE_URL set) — data resets on restart.")
 	}
 
 	notifier := handlers.NewNotifierFromEnv()
+
+	// Outlook ticket intake: only starts if AZURE_TENANT_ID, AZURE_CLIENT_ID,
+	// AZURE_CLIENT_SECRET, and AZURE_MAILBOX are all set. Polls the shared
+	// mailbox every 2 minutes and turns unread emails into tickets.
+	if cfg, ok := outlook.FromEnv(); ok {
+		client := outlook.NewClient(cfg)
+		go outlook.StartPoller(client, ticketStore, 2*time.Minute)
+	} else {
+		log.Println("Outlook integration not configured (set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_MAILBOX) — email ticket intake is off.")
+	}
 
 	ticketHandler := handlers.NewTicketHandler(ticketStore, engineerStore, notifier)
 	authHandler := handlers.NewAuthHandler(userStore)
@@ -104,8 +118,9 @@ func main() {
 	leadHandler := handlers.NewLeadHandler(leadStore)
 	socialTaskHandler := handlers.NewSocialTaskHandler(socialTaskStore)
 	salaryHandler := handlers.NewSalaryHandler(salaryStore)
+	fileHandler := handlers.NewFileHandler(fileStore)
 
-	router := handlers.NewRouter(ticketHandler, authHandler, engineerHandler, attendanceHandler, timesheetHandler, accountingHandler, applicantHandler, dashboardHandler, assignmentHandler, contractHandler, outreachHandler, backupHandler, projectHandler, dispatchHandler, requirementHandler, leadHandler, socialTaskHandler, salaryHandler)
+	router := handlers.NewRouter(ticketHandler, authHandler, engineerHandler, attendanceHandler, timesheetHandler, accountingHandler, applicantHandler, dashboardHandler, assignmentHandler, contractHandler, outreachHandler, backupHandler, projectHandler, dispatchHandler, requirementHandler, leadHandler, socialTaskHandler, salaryHandler, fileHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
